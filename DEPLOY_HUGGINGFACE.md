@@ -33,6 +33,10 @@ USER node
 ENV HOME=/home/node PATH=/home/node/.local/bin:$PATH
 WORKDIR /home/node/app
 
+# Cache-bust: this URL's content changes on every new commit, forcing the clone
+# below to re-run instead of reusing a stale cached layer.
+ADD https://api.github.com/repos/MuhammadHamza2210/CampusFind/commits/main /tmp/commit.json
+
 # Pull the backend source and build it.
 RUN git clone --depth 1 https://github.com/MuhammadHamza2210/CampusFind.git .
 WORKDIR /home/node/app/server
