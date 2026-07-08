@@ -22,6 +22,33 @@ function pinDnsResolvers(servers: string[]) {
   }
 }
 
+/** Reject if `promise` doesn't settle within `ms` — bounds a hung connect. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
+async function attemptConnect(): Promise<void> {
+  const connectPromise = mongoose.connect(env.mongoUri, {
+    serverSelectionTimeoutMS: 8000,
+    connectTimeoutMS: 8000,
+    family: 4, // prefer IPv4 — avoids IPv6 stalls in some container networks
+  });
+  // Swallow a late rejection so a timed-out attempt doesn't crash the process.
+  connectPromise.catch(() => {});
+  await withTimeout(connectPromise, 15000, 'MongoDB connect');
+}
+
+/**
+ * Connect with unbounded background retries. The caller does NOT await this —
+ * the HTTP server starts listening first (so the platform sees a healthy port
+ * and /api/health responds), and the DB connects shortly after. This survives
+ * the intermittent SRV/DNS stalls seen on some container hosts.
+ */
 export async function connectDB(): Promise<void> {
   mongoose.set('strictQuery', true);
 
@@ -31,39 +58,34 @@ export async function connectDB(): Promise<void> {
     .filter(Boolean);
   if (customDns.length) pinDnsResolvers(customDns);
 
-  try {
-    console.log('→ Connecting to MongoDB…');
-    await mongoose.connect(env.mongoUri, {
-      serverSelectionTimeoutMS: 15000,
-      family: 4, // prefer IPv4 — avoids IPv6 stalls in some container networks
-    });
-    const host = mongoose.connection.host;
-    console.log(`✓ MongoDB connected (${host})`);
-
-    // Build all model indexes (incl. the listing text index) before serving, so
-    // index-backed queries like `$text` search can't 500 during the autoIndex
-    // race on a fresh database. Best-effort — a slow build shouldn't block boot.
+  let attempt = 0;
+  for (;;) {
+    attempt++;
     try {
-      await Promise.all(
-        Object.values(mongoose.models).map((m) => m.createIndexes())
-      );
-    } catch (indexErr) {
-      console.warn('⚠ Index build warning:', (indexErr as Error).message);
-    }
-  } catch (err) {
-    const msg = (err as Error).message;
-    console.error('✗ MongoDB connection failed:', msg);
-    if (/querySrv|ENOTFOUND|ECONNREFUSED|ETIMEOUT|ETIMEDOUT/.test(msg)) {
+      console.log(`→ Connecting to MongoDB (attempt ${attempt})…`);
+      await attemptConnect();
+      console.log(`✓ MongoDB connected (${mongoose.connection.host})`);
+
+      // Build indexes (incl. the listing text index) so index-backed queries
+      // like `$text` search can't 500 during the autoIndex race. Best-effort.
+      try {
+        await Promise.all(
+          Object.values(mongoose.models).map((m) => m.createIndexes())
+        );
+      } catch (indexErr) {
+        console.warn('⚠ Index build warning:', (indexErr as Error).message);
+      }
+      return;
+    } catch (err) {
       console.error(
-        '  This looks like a DNS or network block. Fixes:\n' +
-          '    1. Atlas → Network Access → allow your IP (or 0.0.0.0/0 for dev).\n' +
-          '    2. Try a different network / phone hotspot (campus Wi-Fi often blocks it).\n' +
-          '    3. Set DNS_SERVERS=1.1.1.1,8.8.8.8 in .env, or use the non-SRV\n' +
-          '       (mongodb://host1,host2,host3/...) connection string from Atlas.'
+        `✗ MongoDB connect attempt ${attempt} failed: ${(err as Error).message} — retrying in 4s`
       );
-    } else {
-      console.error('  Tip: check MONGODB_URI credentials and DB name in .env.');
+      try {
+        await mongoose.disconnect();
+      } catch {
+        /* ignore */
+      }
+      await new Promise((r) => setTimeout(r, 4000));
     }
-    process.exit(1);
   }
 }
