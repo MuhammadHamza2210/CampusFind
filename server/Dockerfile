@@ -12,13 +12,12 @@ RUN npm run build
 
 # ---- runtime stage: prod deps + compiled output only ----
 FROM node:22-slim
-# Hugging Face Spaces run the container as UID 1000 — create a matching user.
-RUN useradd -m -u 1000 user
-USER user
-WORKDIR /home/user/app
-COPY --chown=user package*.json ./
+# node:22 already ships a `node` user at UID 1000 — the ID Hugging Face expects.
+USER node
+WORKDIR /home/node/app
+COPY --chown=node package*.json ./
 RUN npm ci --omit=dev
-COPY --chown=user --from=build /app/dist ./dist
+COPY --chown=node --from=build /app/dist ./dist
 ENV NODE_ENV=production PORT=7860
 EXPOSE 7860
 CMD ["node", "dist/index.js"]

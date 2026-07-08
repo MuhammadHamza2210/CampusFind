@@ -24,17 +24,18 @@ paste this, and commit:
 ```dockerfile
 FROM node:22-slim
 
-# git to fetch the source, then the non-root user HF runs the container as.
+# git to fetch the source.
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
-RUN useradd -m -u 1000 user
-USER user
-ENV HOME=/home/user PATH=/home/user/.local/bin:$PATH
-WORKDIR /home/user/app
+
+# node:22 already ships a `node` user at UID 1000 — the ID HF runs as.
+USER node
+ENV HOME=/home/node PATH=/home/node/.local/bin:$PATH
+WORKDIR /home/node/app
 
 # Pull the backend source and build it.
 RUN git clone --depth 1 https://github.com/MuhammadHamza2210/CampusFind.git .
-WORKDIR /home/user/app/server
+WORKDIR /home/node/app/server
 RUN npm ci && npm run build && npm prune --omit=dev
 
 ENV NODE_ENV=production PORT=7860
