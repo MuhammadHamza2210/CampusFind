@@ -9,10 +9,20 @@ import { env, cookieOptions } from '../config/env';
 const OTP_TTL_MS = 10 * 60 * 1000;
 
 function assertAllowedDomain(email: string) {
-  const domain = email.split('@')[1]?.toLowerCase();
-  if (domain !== env.allowedEmailDomain) {
+  const domain = email.split('@')[1]?.toLowerCase() ?? '';
+  // ALLOWED_EMAIL_DOMAIN may be a comma-separated list. Each entry matches the
+  // domain itself OR any subdomain of it — so `bahria.edu.pk` also accepts
+  // `student.bahria.edu.pk`, `faculty.bahria.edu.pk`, etc.
+  const allowed = env.allowedEmailDomain
+    .split(',')
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean);
+  const ok = allowed.some(
+    (base) => domain === base || domain.endsWith(`.${base}`)
+  );
+  if (!ok) {
     throw ApiError.badRequest(
-      `Only @${env.allowedEmailDomain} emails are allowed to register`
+      `Please sign up with your university email (@${allowed.join(' or @')})`
     );
   }
 }
