@@ -24,8 +24,8 @@ paste this, and commit:
 ```dockerfile
 FROM node:22-slim
 
-# git to fetch the source.
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+# git + CA certs so git can verify GitHub's HTTPS certificate.
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # node:22 already ships a `node` user at UID 1000 — the ID HF runs as.
