@@ -17,8 +17,16 @@ function assertAllowedDomain(email: string) {
   }
 }
 
-function setAuthCookie(res: Response, userId: string) {
-  res.cookie('token', signToken(userId), cookieOptions);
+/**
+ * Issue a session token. We both set an httpOnly cookie (works for same-origin
+ * / local dev) AND return the token in the body, so a cross-origin SPA can send
+ * it back as `Authorization: Bearer …` — some hosts (e.g. Hugging Face Spaces)
+ * proxy away credentialed CORS, which breaks cookie auth across domains.
+ */
+function issueToken(res: Response, userId: string): string {
+  const token = signToken(userId);
+  res.cookie('token', token, cookieOptions);
+  return token;
 }
 
 export const signup = asyncHandler(async (req: Request, res: Response) => {
@@ -78,8 +86,8 @@ export const verifyOtp = asyncHandler(async (req: Request, res: Response) => {
   user.otpExpires = undefined;
   await user.save();
 
-  setAuthCookie(res, user.id);
-  res.json({ message: 'Email verified', user: publicUser(user) });
+  const token = issueToken(res, user.id);
+  res.json({ message: 'Email verified', user: publicUser(user), token });
 });
 
 export const resendOtp = asyncHandler(async (req: Request, res: Response) => {
@@ -116,8 +124,8 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     });
   }
 
-  setAuthCookie(res, user.id);
-  res.json({ message: 'Welcome back', user: publicUser(user) });
+  const token = issueToken(res, user.id);
+  res.json({ message: 'Welcome back', user: publicUser(user), token });
 });
 
 export const logout = asyncHandler(async (_req: Request, res: Response) => {

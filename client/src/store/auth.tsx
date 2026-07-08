@@ -6,7 +6,7 @@ import {
   useCallback,
   ReactNode,
 } from 'react';
-import { api } from '@/lib/api';
+import { api, clearAuthToken } from '@/lib/api';
 import { disconnectSocket } from '@/lib/socket';
 import type { User } from '@/types';
 
@@ -39,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api.post('/api/auth/logout');
     } finally {
+      clearAuthToken();
       setUser(null);
       disconnectSocket();
     }
