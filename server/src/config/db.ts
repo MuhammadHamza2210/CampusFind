@@ -3,22 +3,20 @@ import dns from 'dns';
 import { env } from './env';
 
 /**
- * Atlas `mongodb+srv://` URIs need a DNS SRV lookup. On some networks
- * (university Wi-Fi, certain routers/ISPs) the OS resolver refuses the SRV
- * query that Node's c-ares makes — you get `querySrv ECONNREFUSED` even though
- * `nslookup` works. Pinning reliable public resolvers for THIS process fixes it
- * without touching system DNS. Override with DNS_SERVERS=1.1.1.1,8.8.8.8 if needed.
+ * DNS override — OPT-IN via `DNS_SERVERS`.
+ *
+ * On some networks (university Wi-Fi, certain routers/ISPs) the OS resolver
+ * refuses the SRV query that Atlas `mongodb+srv://` URIs need. Setting
+ * `DNS_SERVERS=1.1.1.1,8.8.8.8` pins reliable resolvers for THIS process.
+ *
+ * We do NOT pin automatically: on hosts like Hugging Face/containers the
+ * platform's own resolver works, and forcing public resolvers (that the
+ * sandbox may block) makes the SRV lookup hang. So only override when asked.
  */
-function pinDnsResolvers() {
-  const custom = (process.env.DNS_SERVERS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const publicDns = custom.length ? custom : ['1.1.1.1', '8.8.8.8'];
+function pinDnsResolvers(servers: string[]) {
   try {
     const existing = dns.getServers();
-    // Try public resolvers first, then fall back to whatever the OS had.
-    dns.setServers([...publicDns, ...existing.filter((s) => !publicDns.includes(s))]);
+    dns.setServers([...servers, ...existing.filter((s) => !servers.includes(s))]);
   } catch {
     /* ignore — non-fatal */
   }
@@ -27,11 +25,17 @@ function pinDnsResolvers() {
 export async function connectDB(): Promise<void> {
   mongoose.set('strictQuery', true);
 
-  if (env.mongoUri.startsWith('mongodb+srv://')) pinDnsResolvers();
+  const customDns = (process.env.DNS_SERVERS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (customDns.length) pinDnsResolvers(customDns);
 
   try {
+    console.log('→ Connecting to MongoDB…');
     await mongoose.connect(env.mongoUri, {
       serverSelectionTimeoutMS: 15000,
+      family: 4, // prefer IPv4 — avoids IPv6 stalls in some container networks
     });
     const host = mongoose.connection.host;
     console.log(`✓ MongoDB connected (${host})`);
