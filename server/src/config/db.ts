@@ -52,6 +52,13 @@ async function attemptConnect(): Promise<void> {
 export async function connectDB(): Promise<void> {
   mongoose.set('strictQuery', true);
 
+  // Never let a connection-layer 'error' event go unhandled — an unhandled
+  // 'error' on an EventEmitter crashes the process (and would restart-loop the
+  // container). We log and let the retry loop below handle reconnection.
+  mongoose.connection.on('error', (e: Error) =>
+    console.error('MongoDB connection error:', e.message)
+  );
+
   const customDns = (process.env.DNS_SERVERS || '')
     .split(',')
     .map((s) => s.trim())

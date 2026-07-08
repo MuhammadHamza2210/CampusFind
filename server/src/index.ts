@@ -4,6 +4,15 @@ import { connectDB } from './config/db';
 import { initSocket } from './socket';
 import { env } from './config/env';
 
+// Safety nets: keep the server alive through transient errors (e.g. a flaky DB
+// connection) instead of crashing — a crash would restart-loop the container.
+process.on('unhandledRejection', (reason) =>
+  console.error('Unhandled promise rejection:', reason)
+);
+process.on('uncaughtException', (err) =>
+  console.error('Uncaught exception:', err)
+);
+
 async function start() {
   const app = createApp();
   const server = http.createServer(app);
