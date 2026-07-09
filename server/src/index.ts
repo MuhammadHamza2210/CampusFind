@@ -25,7 +25,15 @@ async function start() {
     console.log(`\n🚀 CampusFind API running on http://localhost:${env.port}`);
     console.log(`   Allowed email domain: @${env.allowedEmailDomain}`);
     console.log(`   Images: ${env.cloudinary.enabled ? 'Cloudinary' : 'local /uploads'}`);
-    console.log(`   Email:  ${env.smtp.enabled ? 'SMTP' : 'console (dev OTP)'}\n`);
+    console.log(
+      `   Email:  ${
+        env.brevo.enabled
+          ? 'Brevo (HTTP API)'
+          : env.smtp.enabled
+            ? 'SMTP'
+            : 'console (dev OTP)'
+      }\n`
+    );
   });
 
   connectDB().catch((err) => console.error('MongoDB connect loop error:', err));
