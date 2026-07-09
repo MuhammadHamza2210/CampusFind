@@ -40,6 +40,18 @@ export const env = {
     },
   },
 
+  // Brevo transactional email over HTTPS. Preferred in production because hosts
+  // like Hugging Face Spaces block outbound SMTP ports, which makes Gmail SMTP
+  // hang. The sender email must be a verified sender in your Brevo account.
+  brevo: {
+    apiKey: process.env.BREVO_API_KEY || '',
+    fromEmail: process.env.BREVO_FROM_EMAIL || process.env.SMTP_USER || '',
+    fromName: process.env.BREVO_FROM_NAME || 'CampusFind',
+    get enabled() {
+      return Boolean(this.apiKey && this.fromEmail);
+    },
+  },
+
   isProd: process.env.NODE_ENV === 'production',
 };
 
